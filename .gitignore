@@ -1,1 +1,5 @@
-**/weights/Resnet50_Final.pth
+weights/
+utils/
+layers/
+data/
+model/__pycache__

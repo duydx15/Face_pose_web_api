@@ -8,7 +8,14 @@ from collections import OrderedDict
 from models.net import MobileNetV1 as MobileNetV1
 from models.net import FPN as FPN
 from models.net import SSH as SSH
+import pathlib
+import os
+# current_path = pathlib.Path(__file__).parent.resolve()
+import sys
 
+current_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+# print(current_path)
+# print("##### ",
 
 
 class ClassHead(nn.Module):
@@ -57,7 +64,8 @@ class RetinaFace(nn.Module):
         if cfg['name'] == 'mobilenet0.25':
             backbone = MobileNetV1()
             if cfg['pretrain']:
-                checkpoint = torch.load("./weights/mobilenetV1X0.25_pretrain.tar", map_location=torch.device('cpu'))
+               
+                checkpoint = torch.load(os.path.join(current_path, "weights", "mobilenetV1X0.25_pretrain.tar"), map_location=torch.device('cpu'))
                 from collections import OrderedDict
                 new_state_dict = OrderedDict()
                 for k, v in checkpoint['state_dict'].items():

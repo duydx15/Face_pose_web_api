@@ -25,6 +25,12 @@ from tqdm import tqdm
 from PIL import Image
 import ffmpeg
 import subprocess
+import pathlib
+current_path = pathlib.Path(__file__).parent.resolve()
+import sys
+# print(current_path)
+sys.path.append(current_path)
+
 LOGURU_FFMPEG_LOGLEVELS = {
 	"trace": "trace",
 	"debug": "debug",
@@ -410,7 +416,7 @@ if __name__ == '__main__':
 		device = torch.device("cpu")
 	print("DEVICE",device == torch.device("cpu"))
 	mobile_net = RetinaFace(cfg=cfg_mnet, phase = 'test')
-	mobile_net = load_model(mobile_net, "./weights/mobilenet0.25_Final.pth", device == torch.device("cpu"))
+	mobile_net = load_model(mobile_net, os.path.join(current_path, "weights", "mobilenet0.25_Final.pth"), device == torch.device("cpu"))
 	mobile_net.eval()
 	print('Finished loading model!')
 	cudnn.benchmark = True
@@ -419,7 +425,7 @@ if __name__ == '__main__':
 	mobile_net = mobile_net.to(device)
 
 	resnet_net = RetinaFace(cfg=cfg_re50, phase = 'test')
-	resnet_net = load_model(resnet_net, "./weights/Resnet50_Final.pth", device == torch.device("cpu"))
+	resnet_net = load_model(resnet_net, os.path.join(current_path, "weights", "Resnet50_Final.pth"), device == torch.device("cpu"))
 	resnet_net.eval()
 	resnet_net = resnet_net.to(device)
 
@@ -448,7 +454,7 @@ if __name__ == '__main__':
 	pbar = tqdm(total=length)
 	previous_facePose = []
 	previous_angle = []
-	data_frame_tmp = None
+	data_frame_tmp = []
 	frame_count = 0
 	while cap.isOpened():
 
