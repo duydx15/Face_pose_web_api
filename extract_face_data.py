@@ -28,6 +28,9 @@ import subprocess
 import pathlib
 current_path = pathlib.Path(__file__).parent.resolve()
 import sys
+import imghdr
+import mimetypes
+
 # print(current_path)
 sys.path.append(current_path)
 
@@ -156,10 +159,10 @@ def detection_face(mobile_net,resnet_net, img, device):
 	padding_size_ratio = 0.5
 	detected_face = False
 	img = imutils.resize(img, width = 640)
-	H_resize, W_resize, _ = img.shape
+	H_resize, W_resize,_= img.shape
 	img_draw = img.copy()
 	img = np.float32(img)
-	im_height, im_width, _ = img.shape
+	im_height, im_width,_= img.shape
 	# print(img.shape)
 	#Resize, normalize and preprocess
 	scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
@@ -397,6 +400,16 @@ def save_data(path_data,data_tmp):
 	with open(save_path,"a") as f:
 		json.dump(data_tmp,f)
 	data_frame_tmp = {}
+
+def is_image(path):
+	# Check if the path corresponds to an image file using imghdr
+	image_type = imghdr.what(path)
+	return image_type is not None
+
+def is_video(path):
+	# Check if the path corresponds to a video file using mimetypes
+	video_type, _ = mimetypes.guess_type(path)
+	return video_type is not None and video_type.startswith('video/')
 	
 
 if __name__ == '__main__':
@@ -423,119 +436,156 @@ if __name__ == '__main__':
  
 	# device = torch.device("cuda")
 	mobile_net = mobile_net.to(device)
-
 	resnet_net = RetinaFace(cfg=cfg_re50, phase = 'test')
 	resnet_net = load_model(resnet_net, os.path.join(current_path, "weights", "Resnet50_Final.pth"), device == torch.device("cpu"))
 	resnet_net.eval()
 	resnet_net = resnet_net.to(device)
-
 	dim = (256, 256)
-	#
 	source_image_euler_angles = [(1, 0, 0), (45, 0, 0), (-45, 0, 0)]
 
-	# save file
-	if not os.path.exists(args.save_folder):
-		os.makedirs(args.save_folder)
-	cap = cv2.VideoCapture(args.path_video)
-	# cap = cv2.VideoCapture(0)
-	frame_width = int(cap.get(3))
-	frame_height = int(cap.get(4))
-	fps = cap.get(cv2.CAP_PROP_FPS)
+	if is_video(args.path_video):
+		print("Input is video")
+		cap = cv2.VideoCapture(args.path_video)
+		# cap = cv2.VideoCapture(0)
+		frame_width = int(cap.get(3))
+		frame_height = int(cap.get(4))
+		fps = cap.get(cv2.CAP_PROP_FPS)
+		size = (frame_width, frame_height)
+		length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+		count_frame = 0
+		FRAME_SEQ_LEN = int(fps/2)
+		pbar = tqdm(total=length)
+		data_frame_tmp = []
+		frame_count = 0
+		while cap.isOpened():
+			success, image = cap.read()
+			frame_count += 1
+			if not success :#or frame_count == 21:
+				print("Ignoring empty camera frame.")
+				save_data(save_path,data_frame_tmp)
+				break
+			if frame_count // 10 == 0:
+				save_data(save_path,data_frame_tmp)
+			pbar.update(1)
+			most_frequent_value = 0
+			l_coordinate, detected_face = detection_face(mobile_net,resnet_net, image, device)
+			if not detected_face:
+				print("Not detect face")
+				data_frame_tmp.update({'Frame_' + format(frame_count, '06d'):{
+										"angle":[],
+										"landmarks":[]}})
+			else:
+				coordinate = l_coordinate[0]
+				topleft, bottomright = coordinate
+				crop_image = image[topleft[1]:bottomright[1], topleft[0]:bottomright[0],:]
+				results = face_mesh.process(cv2.cvtColor(crop_image, cv2.COLOR_BGR2RGB))
+				if not results.multi_face_landmarks:
+					print("Not detect multi_face_landmarks")
+					data_frame_tmp.update({'Frame_' + format(frame_count, '06d'):{
+										"angle":[],
+										"landmarks":[]}})
+					continue
+				face_landmarks = results.multi_face_landmarks[0]
+				bbox = []
+				bbox.append(topleft[0])
+				bbox.append(topleft[1])
+				bbox.append(bottomright[0])
+				bbox.append(bottomright[1])
 
-	size = (frame_width, frame_height)
+				if not face_landmarks:
+					print("Not detect landmarks")
+					data_frame_tmp.update({'Frame_' + format(frame_count, '06d'):{
+										"angle":[],
+										"landmarks":[]}})
+					continue
+				bbox_w = bottomright[0] - topleft[0]
+				bbox_h = bottomright[1] - topleft[1]
+				posePoint = []
+				data_pose = []
+				# Get 468 landmarks
+				for i in range(468):
+					idx = i
+					x = face_landmarks.landmark[idx].x
+					y = face_landmarks.landmark[idx].y
+					realx = x * bbox_w
+					realy = y * bbox_h
+					data_pose.append([realx, realy])
 
-	length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-	count_frame = 0
-	# count_detected = 0
-	# count_landmark = 0
-	FRAME_SEQ_LEN = int(fps/2)
-	print('FRAME_SEQ_LEN ', FRAME_SEQ_LEN)
-
-	pbar = tqdm(total=length)
-	previous_facePose = []
-	previous_angle = []
-	data_frame_tmp = []
-	frame_count = 0
-	while cap.isOpened():
-
-		success, image = cap.read()
-		frame_count += 1
-		if not success :#or frame_count == 21:
-			print("Ignoring empty camera frame.")
-			save_data(save_path,data_frame_tmp)
-			break
-		if frame_count // 10 == 0:
-			save_data(save_path,data_frame_tmp)
-		pbar.update(1)
-		most_frequent_value = 0
-
+				for i in range(len(FACEMESH_pose_estimation)):
+					idx = FACEMESH_pose_estimation[i]
+					x = face_landmarks.landmark[idx].x
+					y = face_landmarks.landmark[idx].y
+					realx = x * bbox_w
+					realy = y * bbox_h
+					posePoint.append((realx, realy))
+				curid = facePose(posePoint[0], posePoint[1], posePoint[2], posePoint[3], posePoint[4], source_image_euler_angles)
+				data_frame_tmp.update({'Frame_' + format(frame_count, '06d'):{
+										"angle":curid,
+										"landmarks":data_pose}})
+		# if cv2.waitKey(5) & 0xFF == 27:
+			# 	break
+		cap.release()
+		pbar.close()
+	elif is_image(args.path_video):
+		print("Input is image")
+		image = cv2.imread(args.path_video)
+		# print(image.shape)
+		file_name = os.path.basename(args.path_video)
 		l_coordinate, detected_face = detection_face(mobile_net,resnet_net, image, device)
-		# o_frame = image.copy()
+			# o_frame = image.copy()
+		data_frame_tmp = {}
 		if not detected_face:
 			print("Not detect face")
-			data_frame_tmp.update({'Frame_' + format(frame_count, '06d'):{
+			data_frame_tmp.update({file_name:{
 									"angle":[],
 									"landmarks":[]}})
 		else:
 			coordinate = l_coordinate[0]
 			topleft, bottomright = coordinate
-			# print(coordinate)
 			crop_image = image[topleft[1]:bottomright[1], topleft[0]:bottomright[0],:]
-			# crop_image.flags.writeable = False
-			# cv2.imwrite("/home/anlab/Downloads/test_tmp.jpg",crop_image)
 			results = face_mesh.process(cv2.cvtColor(crop_image, cv2.COLOR_BGR2RGB))
-			# print(results.multi_face_landmarks[0])
-			# break
 			if not results.multi_face_landmarks:
 				print("Not detect multi_face_landmarks")
-				data_frame_tmp.update({'Frame_' + format(frame_count, '06d'):{
+				data_frame_tmp.update({file_name:{
 									"angle":[],
 									"landmarks":[]}})
-				continue
-			face_landmarks = results.multi_face_landmarks[0]
-			bbox = []
-			bbox.append(topleft[0])
-			bbox.append(topleft[1])
-			bbox.append(bottomright[0])
-			bbox.append(bottomright[1])
+			else:
+				face_landmarks = results.multi_face_landmarks[0]
+				bbox = []
+				bbox.append(topleft[0])
+				bbox.append(topleft[1])
+				bbox.append(bottomright[0])
+				bbox.append(bottomright[1])
 
-			if not face_landmarks:
-				print("Not detect landmarks")
-				data_frame_tmp.update({'Frame_' + format(frame_count, '06d'):{
-									"angle":[],
-									"landmarks":[]}})
-				continue
-			# print('bbox ', bbox)
-			bbox_w = bottomright[0] - topleft[0]
-			bbox_h = bottomright[1] - topleft[1]
-			posePoint = []
-			data_pose = []
-			# Get 468 landmarks
-			for i in range(468):
-				idx = i
-				x = face_landmarks.landmark[idx].x
-				y = face_landmarks.landmark[idx].y
-				realx = x * bbox_w
-				realy = y * bbox_h
-				data_pose.append([realx, realy])
+				if not face_landmarks:
+					print("Not detect landmarks")
+					data_frame_tmp.update({file_name:{
+										"angle":[],
+										"landmarks":[]}})
+				else:
+					# print('bbox ', bbox)
+					bbox_w = bottomright[0] - topleft[0]
+					bbox_h = bottomright[1] - topleft[1]
+					posePoint = []
+					data_pose = []
+					# Get 468 landmarks
+					for i in range(468):
+						idx = i
+						x = face_landmarks.landmark[idx].x
+						y = face_landmarks.landmark[idx].y
+						realx = x * bbox_w
+						realy = y * bbox_h
+						data_pose.append([realx, realy])
 
-			for i in range(len(FACEMESH_pose_estimation)):
-				idx = FACEMESH_pose_estimation[i]
-				x = face_landmarks.landmark[idx].x
-				y = face_landmarks.landmark[idx].y
-				realx = x * bbox_w
-				realy = y * bbox_h
-				posePoint.append((realx, realy))
-			curid = facePose(posePoint[0], posePoint[1], posePoint[2], posePoint[3], posePoint[4], source_image_euler_angles)
-			data_frame_tmp.update({'Frame_' + format(frame_count, '06d'):{
-									"angle":curid,
-									"landmarks":data_pose}})
-			previous_facePose = data_pose
-			previous_angle = curid
-
-	# if cv2.waitKey(5) & 0xFF == 27:
-		# 	break
-	cap.release()
-	pbar.close()
-	# encoder.stdin.flush()
-	# encoder.stdin.close()
+					for i in range(len(FACEMESH_pose_estimation)):
+						idx = FACEMESH_pose_estimation[i]
+						x = face_landmarks.landmark[idx].x
+						y = face_landmarks.landmark[idx].y
+						realx = x * bbox_w
+						realy = y * bbox_h
+						posePoint.append((realx, realy))
+					curid = facePose(posePoint[0], posePoint[1], posePoint[2], posePoint[3], posePoint[4], source_image_euler_angles)
+					data_frame_tmp.update({file_name:{
+											"angle":curid,
+											"landmarks":data_pose}})
+		save_data(save_path,data_frame_tmp)
