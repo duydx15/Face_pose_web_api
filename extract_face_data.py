@@ -530,13 +530,12 @@ if __name__ == '__main__':
 		print("Input is image")
 		image = cv2.imread(args.path_video)
 		# print(image.shape)
-		file_name = os.path.basename(args.path_video)
 		l_coordinate, detected_face = detection_face(mobile_net,resnet_net, image, device)
 			# o_frame = image.copy()
 		data_frame_tmp = {}
 		if not detected_face:
 			print("Not detect face")
-			data_frame_tmp.update({file_name:{
+			data_frame_tmp.update({"data":{
 									"angle":[],
 									"landmarks":[]}})
 		else:
@@ -546,7 +545,7 @@ if __name__ == '__main__':
 			results = face_mesh.process(cv2.cvtColor(crop_image, cv2.COLOR_BGR2RGB))
 			if not results.multi_face_landmarks:
 				print("Not detect multi_face_landmarks")
-				data_frame_tmp.update({file_name:{
+				data_frame_tmp.update({"data":{
 									"angle":[],
 									"landmarks":[]}})
 			else:
@@ -559,7 +558,7 @@ if __name__ == '__main__':
 
 				if not face_landmarks:
 					print("Not detect landmarks")
-					data_frame_tmp.update({file_name:{
+					data_frame_tmp.update({"data":{
 										"angle":[],
 										"landmarks":[]}})
 				else:
@@ -585,7 +584,7 @@ if __name__ == '__main__':
 						realy = y * bbox_h
 						posePoint.append((realx, realy))
 					curid = facePose(posePoint[0], posePoint[1], posePoint[2], posePoint[3], posePoint[4], source_image_euler_angles)
-					data_frame_tmp.update({file_name:{
+					data_frame_tmp.update({"data":{
 											"angle":curid,
 											"landmarks":data_pose}})
 		save_data(save_path,data_frame_tmp)
