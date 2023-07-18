@@ -416,7 +416,8 @@ if __name__ == '__main__':
 	torch.set_grad_enabled(False)
 	save_path = args.output_json
 	
- 
+	if os.path.exists(save_path):
+		os.remove(save_path)
  
 	face_mesh = mp_face_mesh.FaceMesh(
 							max_num_faces=1,
@@ -503,13 +504,16 @@ if __name__ == '__main__':
 				posePoint = []
 				data_pose = []
 				# Get 468 landmarks
-				for i in range(468):
+				
+				for i in range(len(face_landmarks.landmark[:])):
 					idx = i
 					x = face_landmarks.landmark[idx].x
 					y = face_landmarks.landmark[idx].y
+					z = face_landmarks.landmark[idx].z	
 					realx = x * bbox_w
 					realy = y * bbox_h
-					data_pose.append([realx, realy])
+					realz = z * bbox_w
+					data_pose.append([realx, realy,realz])
 
 				for i in range(len(FACEMESH_pose_estimation)):
 					idx = FACEMESH_pose_estimation[i]
@@ -568,20 +572,23 @@ if __name__ == '__main__':
 					posePoint = []
 					data_pose = []
 					# Get 468 landmarks
-					for i in range(468):
+					# print("Length IRis point", len(face_landmarks.landmark[:]),face_landmarks.landmark[0].z)
+					for i in range(len(face_landmarks.landmark[:])):
 						idx = i
 						x = face_landmarks.landmark[idx].x
 						y = face_landmarks.landmark[idx].y
-						realx = x * bbox_w
-						realy = y * bbox_h
-						data_pose.append([realx, realy])
+						z = face_landmarks.landmark[idx].z	
+						realx = x * bbox_w + bbox[0]
+						realy = y * bbox_h + bbox[1]
+						realz = z * bbox_w
+						data_pose.append([realx, realy,realz])
 
 					for i in range(len(FACEMESH_pose_estimation)):
 						idx = FACEMESH_pose_estimation[i]
 						x = face_landmarks.landmark[idx].x
 						y = face_landmarks.landmark[idx].y
-						realx = x * bbox_w
-						realy = y * bbox_h
+						realx = x * bbox_w + bbox[0]
+						realy = y * bbox_h + bbox[1]
 						posePoint.append((realx, realy))
 					curid = facePose(posePoint[0], posePoint[1], posePoint[2], posePoint[3], posePoint[4], source_image_euler_angles)
 					data_frame_tmp.update({"data":{
